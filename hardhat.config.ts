@@ -1,4 +1,5 @@
 import { HardhatUserConfig } from "hardhat/config";
+import "@openzeppelin/hardhat-upgrades";
 import "@nomicfoundation/hardhat-toolbox";
 import "hardhat-contract-sizer";
 import "solidity-coverage";
@@ -10,6 +11,8 @@ const tasksPath = path.join(__dirname, "tasks");
 require(`${tasksPath}/deploy-AlphaVault.ts`);
 require(`${tasksPath}/deploy-ECDSA.ts`);
 require(`${tasksPath}/deploy-GMXPositionManager.ts`);
+require(`${tasksPath}/deploy-GMXPositionManagerDelegator.ts`);
+require(`${tasksPath}/upgrade-GMXPositionManagerDelegator.ts`);
 
 const config: HardhatUserConfig = {
   networks: {

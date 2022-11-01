@@ -1,7 +1,7 @@
 import { expect } from "chai";
-import { ethers } from "hardhat";
+import { ethers, upgrades } from "hardhat";
 import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers";
-import { AlphaVault, GMXPositionManager } from "../typechain-types";
+import { AlphaVault, GMXPositionManager, GMXPositionManagerDelegator, GMXPositionManagerDelegatorV2 } from "../typechain-types";
 import { unlockAddress } from "./helpers/unlockAddress";
 import { BigNumber, Contract, Signer, Wallet } from "ethers";
 import { Sign } from "crypto";
@@ -18,7 +18,7 @@ const depositAmount = ethers.utils.parseUnits("1000", "6");
 const halfDepositAmount = depositAmount.div(2);
 const millionDepositAmount = ethers.utils.parseUnits("5000000", "6");
 
-describe("AlphaVault-Avalanche", function () {
+describe("AlphaVault", function () {
   let deployer: SignerWithAddress;
   let secondAct: SignerWithAddress;
   let thirdAct: SignerWithAddress;
@@ -33,7 +33,7 @@ describe("AlphaVault-Avalanche", function () {
   let thirdActDepositSignature: string;
 
   let alphaVault: AlphaVault;
-  let gmxPositionManager: GMXPositionManager;
+  let gmxPositionManager: GMXPositionManagerDelegator;
   let usdc: Contract;
   let usdcWhale: SignerWithAddress;
   let usdcDecimals = 6;
@@ -85,9 +85,13 @@ describe("AlphaVault-Avalanche", function () {
     );
 
     // Deploy GMXPositionManager
-    const GMXPositionManager = await ethers.getContractFactory("GMXPositionManager");
-    gmxPositionManager = await GMXPositionManager.deploy(usdcAddress, alphaVault.address);
-    await alphaVault.setGMXPositionManager(gmxPositionManager.address);
+    const GMXPositionManagerDelegator = await ethers.getContractFactory("GMXPositionManagerDelegator");
+    gmxPositionManager = (await upgrades.deployProxy(GMXPositionManagerDelegator, [
+      usdcAddress,
+      alphaVault.address,
+      manager.address,
+    ])) as GMXPositionManagerDelegator;
+    await gmxPositionManager.transferOwnership(manager.address);
 
     usdcWhale = await unlockAddress("0x279f8940ca2a44C35ca3eDf7d28945254d0F0aE6");
     usdc = await ethers.getContractAt(erc20Abi, usdcAddress, usdcWhale);
@@ -113,7 +117,7 @@ describe("AlphaVault-Avalanche", function () {
       await usdc.connect(usdcWhale).transfer(deployer.address, depositAmount.mul(10));
       await usdc.connect(usdcWhale).transfer(secondAct.address, depositAmount.mul(10));
       await usdc.connect(usdcWhale).transfer(thirdAct.address, depositAmount.mul(10));
-      // Fund trading wallet with BNB
+      // Fund trading wallet with AVAX
       await deployer.sendTransaction({
         to: tradingEoa.address,
         value: ethers.utils.parseEther("1"),
@@ -298,6 +302,7 @@ describe("AlphaVault-Avalanche", function () {
 
     it("Should be possible to request the opening of a AVAX/USD long position on GMX", async function () {
       const vaultBalance = await usdc.balanceOf(alphaVault.address);
+      const positionManagerBalance = await usdc.balanceOf(gmxPositionManager.address);
       const tokenAmount = ethers.utils.parseUnits("15", "6");
       const keepersFee = ethers.utils.parseEther("0.02");
 
@@ -305,13 +310,16 @@ describe("AlphaVault-Avalanche", function () {
       await expect(tx).not.to.be.reverted;
 
       const vaultFinalBalance = await usdc.balanceOf(alphaVault.address);
+      const positionManagerFinalBalance = await usdc.balanceOf(gmxPositionManager.address);
       const vaultDelta = vaultBalance.sub(vaultFinalBalance);
       expect(vaultFinalBalance).to.be.lt(vaultBalance);
+      expect(positionManagerFinalBalance).to.be.gt(positionManagerBalance);
       expect(vaultDelta).to.be.eq(tokenAmount);
     });
 
     it("Should be possible to request the opening of a AVAX/USD short position on GMX", async function () {
       const vaultBalance = await usdc.balanceOf(alphaVault.address);
+      const positionManagerBalance = await usdc.balanceOf(gmxPositionManager.address);
       const tokenAmount = ethers.utils.parseUnits("15", "6");
       const keepersFee = ethers.utils.parseEther("0.02");
 
@@ -319,92 +327,112 @@ describe("AlphaVault-Avalanche", function () {
       await expect(tx).not.to.be.reverted;
 
       const vaultFinalBalance = await usdc.balanceOf(alphaVault.address);
+      const positionManagerFinalBalance = await usdc.balanceOf(gmxPositionManager.address);
       const vaultDelta = vaultBalance.sub(vaultFinalBalance);
       expect(vaultFinalBalance).to.be.lt(vaultBalance);
+      expect(positionManagerFinalBalance).to.be.gt(positionManagerBalance);
       expect(vaultDelta).to.be.eq(tokenAmount);
     });
 
     it("Should be possible to request the opening of a ETH/USD long position on GMX", async function () {
       const vaultBalance = await usdc.balanceOf(alphaVault.address);
       const tokenAmount = ethers.utils.parseUnits("15", "6");
+      const positionManagerBalance = await usdc.balanceOf(gmxPositionManager.address);
       const keepersFee = ethers.utils.parseEther("0.02");
 
       const tx = alphaVault.openPosition("0x49D5c2BdFfac6CE2BFdB6640F4F80f226bc10bAB", tokenAmount, true, { value: keepersFee });
       await expect(tx).not.to.be.reverted;
 
       const vaultFinalBalance = await usdc.balanceOf(alphaVault.address);
+      const positionManagerFinalBalance = await usdc.balanceOf(gmxPositionManager.address);
       const vaultDelta = vaultBalance.sub(vaultFinalBalance);
       expect(vaultFinalBalance).to.be.lt(vaultBalance);
+      expect(positionManagerFinalBalance).to.be.gt(positionManagerBalance);
       expect(vaultDelta).to.be.eq(tokenAmount);
     });
 
     it("Should be possible to request the opening of a ETH/USD short position on GMX", async function () {
       const vaultBalance = await usdc.balanceOf(alphaVault.address);
       const tokenAmount = ethers.utils.parseUnits("15", "6");
+      const positionManagerBalance = await usdc.balanceOf(gmxPositionManager.address);
       const keepersFee = ethers.utils.parseEther("0.02");
 
       const tx = alphaVault.openPosition("0x49D5c2BdFfac6CE2BFdB6640F4F80f226bc10bAB", tokenAmount, false, { value: keepersFee });
       await expect(tx).not.to.be.reverted;
 
       const vaultFinalBalance = await usdc.balanceOf(alphaVault.address);
+      const positionManagerFinalBalance = await usdc.balanceOf(gmxPositionManager.address);
       const vaultDelta = vaultBalance.sub(vaultFinalBalance);
       expect(vaultFinalBalance).to.be.lt(vaultBalance);
+      expect(positionManagerFinalBalance).to.be.gt(positionManagerBalance);
       expect(vaultDelta).to.be.eq(tokenAmount);
     });
 
     it("Should be possible to request the opening of a WBTC/USD long position on GMX", async function () {
       const vaultBalance = await usdc.balanceOf(alphaVault.address);
       const tokenAmount = ethers.utils.parseUnits("15", "6");
+      const positionManagerBalance = await usdc.balanceOf(gmxPositionManager.address);
       const keepersFee = ethers.utils.parseEther("0.02");
 
       const tx = alphaVault.openPosition("0x50b7545627a5162F82A992c33b87aDc75187B218", tokenAmount, true, { value: keepersFee });
       await expect(tx).not.to.be.reverted;
 
       const vaultFinalBalance = await usdc.balanceOf(alphaVault.address);
+      const positionManagerFinalBalance = await usdc.balanceOf(gmxPositionManager.address);
       const vaultDelta = vaultBalance.sub(vaultFinalBalance);
       expect(vaultFinalBalance).to.be.lt(vaultBalance);
+      expect(positionManagerFinalBalance).to.be.gt(positionManagerBalance);
       expect(vaultDelta).to.be.eq(tokenAmount);
     });
 
     it("Should be possible to request the opening of a WBTC/USD short position on GMX", async function () {
       const vaultBalance = await usdc.balanceOf(alphaVault.address);
       const tokenAmount = ethers.utils.parseUnits("15", "6");
+      const positionManagerBalance = await usdc.balanceOf(gmxPositionManager.address);
       const keepersFee = ethers.utils.parseEther("0.02");
 
       const tx = alphaVault.openPosition("0x50b7545627a5162F82A992c33b87aDc75187B218", tokenAmount, false, { value: keepersFee });
       await expect(tx).not.to.be.reverted;
 
       const vaultFinalBalance = await usdc.balanceOf(alphaVault.address);
+      const positionManagerFinalBalance = await usdc.balanceOf(gmxPositionManager.address);
       const vaultDelta = vaultBalance.sub(vaultFinalBalance);
       expect(vaultFinalBalance).to.be.lt(vaultBalance);
+      expect(positionManagerFinalBalance).to.be.gt(positionManagerBalance);
       expect(vaultDelta).to.be.eq(tokenAmount);
     });
 
     it("Should be possible to request the opening of a BTC.B/USD long position on GMX", async function () {
       const vaultBalance = await usdc.balanceOf(alphaVault.address);
       const tokenAmount = ethers.utils.parseUnits("15", "6");
+      const positionManagerBalance = await usdc.balanceOf(gmxPositionManager.address);
       const keepersFee = ethers.utils.parseEther("0.02");
 
       const tx = alphaVault.openPosition("0x152b9d0FdC40C096757F570A51E494bd4b943E50", tokenAmount, true, { value: keepersFee });
       await expect(tx).not.to.be.reverted;
 
       const vaultFinalBalance = await usdc.balanceOf(alphaVault.address);
+      const positionManagerFinalBalance = await usdc.balanceOf(gmxPositionManager.address);
       const vaultDelta = vaultBalance.sub(vaultFinalBalance);
       expect(vaultFinalBalance).to.be.lt(vaultBalance);
+      expect(positionManagerFinalBalance).to.be.gt(positionManagerBalance);
       expect(vaultDelta).to.be.eq(tokenAmount);
     });
 
     it("Should be possible to request the opening of a BTC.B/USD short position on GMX", async function () {
       const vaultBalance = await usdc.balanceOf(alphaVault.address);
       const tokenAmount = ethers.utils.parseUnits("15", "6");
+      const positionManagerBalance = await usdc.balanceOf(gmxPositionManager.address);
       const keepersFee = ethers.utils.parseEther("0.02");
 
       const tx = alphaVault.openPosition("0x152b9d0FdC40C096757F570A51E494bd4b943E50", tokenAmount, false, { value: keepersFee });
       await expect(tx).not.to.be.reverted;
 
       const vaultFinalBalance = await usdc.balanceOf(alphaVault.address);
+      const positionManagerFinalBalance = await usdc.balanceOf(gmxPositionManager.address);
       const vaultDelta = vaultBalance.sub(vaultFinalBalance);
       expect(vaultFinalBalance).to.be.lt(vaultBalance);
+      expect(positionManagerFinalBalance).to.be.gt(positionManagerBalance);
       expect(vaultDelta).to.be.eq(tokenAmount);
     });
 
@@ -810,6 +838,28 @@ describe("AlphaVault-Avalanche", function () {
       for (let i = 0; i < loopCount.toNumber(); i++) {
         await alphaVault.connect(deployer).deposit(ethers.utils.parseUnits("50000", "6"), deployerDepositSignature);
       }
+    });
+
+    it("Should be able to upgrade GMXPositionManager", async () => {
+      const previousImplementation = await gmxPositionManager.getImplementation();
+      const previousToken = await gmxPositionManager.token();
+
+      const test = await gmxPositionManager.owner();
+
+      const GMXPositionManager = await ethers.getContractFactory("GMXPositionManagerDelegatorV2", manager);
+      const newGmxPositionManager = (await upgrades.upgradeProxy(gmxPositionManager.address, GMXPositionManager, {
+        call: "initializeV2",
+      })) as GMXPositionManagerDelegatorV2;
+
+      const newImplementation = await gmxPositionManager.getImplementation();
+      const newToken = await gmxPositionManager.token();
+
+      expect(gmxPositionManager.address).to.be.eq(newGmxPositionManager.address);
+      expect(newImplementation).not.to.be.eq(previousImplementation);
+      expect(newToken).not.to.be.eq(previousToken);
+
+      // Post upgrade
+      await gmxPositionManager.connect(manager).setToken(usdc.address);
     });
 
     it("Should deposit in Stargate and send funds to trading wallet", async function () {

@@ -1,6 +1,7 @@
 node_modules
 .env
 .idea
+.openzeppelin
 .DS_STORE
 coverage
 coverage.json
