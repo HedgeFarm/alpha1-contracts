@@ -8,11 +8,10 @@ import path from "path";
 dotenv.config();
 
 const tasksPath = path.join(__dirname, "tasks");
-require(`${tasksPath}/deploy-AlphaVault.ts`);
-require(`${tasksPath}/deploy-ECDSA.ts`);
-require(`${tasksPath}/deploy-GMXPositionManager.ts`);
-require(`${tasksPath}/deploy-GMXPositionManagerDelegator.ts`);
-require(`${tasksPath}/upgrade-GMXPositionManagerDelegator.ts`);
+require(`${tasksPath}/deploy-AlphaVaultMigratooor.ts`);
+require(`${tasksPath}/deploy-AlphaVaultProxy.ts`);
+require(`${tasksPath}/deploy-StargateManager.ts`);
+require(`${tasksPath}/upgrade-AlphaVault.ts`);
 
 const config: HardhatUserConfig = {
   networks: {
